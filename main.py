@@ -1,18 +1,20 @@
 import random
-import string 
+import string
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, HttpUrl
 
+from cache import get_cached_url, set_cached_url
 from db import get_connection, init_db
 
 CHARS = string.ascii_letters + string.digits
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()  # server start hote hi table bana do (agar nahi hai)
+    init_db()
     yield
 
 
@@ -48,10 +50,21 @@ def shorten(req: ShortenRequest):
 
 @app.get("/{code}")
 def redirect(code: str):
+    # 1. Pehle cache (Redis) me dhundo
+    long_url = get_cached_url(code)
+    if long_url:
+        return RedirectResponse(
+            long_url, status_code=302, headers={"X-Cache": "HIT"}
+        )
+
+    # 2. Cache miss: database se lo
     with get_connection() as conn:
         row = conn.execute(
             "SELECT long_url FROM urls WHERE short_code = %s", (code,)
         ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Link not found")
-    return RedirectResponse(row[0], status_code=302)
+
+    # 3. Aage ke liye cache me save karo
+    set_cached_url(code, row[0])
+    return RedirectResponse(row[0], status_code=302, headers={"X-Cache": "MISS"})
