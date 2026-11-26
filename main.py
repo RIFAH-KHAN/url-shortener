@@ -2,7 +2,8 @@ import random
 import string
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional 
+from ratelimit import allow_request
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -61,7 +62,10 @@ def log_click(code: str, request: Request):
 
 
 @app.post("/shorten")
-def shorten(req: ShortenRequest):
+def shorten(req: ShortenRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if not allow_request(f"shorten:{client_ip}", capacity=5, rate=0.2):
+        raise HTTPException(status_code=429, detail="Too many requests, slow down")
     expires_at = None
     if req.expires_in_days:
         expires_at = datetime.now(timezone.utc) + timedelta(days=req.expires_in_days)
