@@ -15,8 +15,10 @@ def get_cached_url(code: str):
         return None
 
 
-def set_cached_url(code: str, long_url: str):
+def set_cached_url(code: str, long_url: str, ttl: int = CACHE_TTL_SECONDS):
+    if ttl <= 0:
+        return
     try:
-        r.set(f"url:{code}", long_url, ex=CACHE_TTL_SECONDS)
+        r.set(f"url:{code}", long_url, ex=ttl)
     except redis.RedisError:
         pass
